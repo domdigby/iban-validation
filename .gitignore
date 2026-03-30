@@ -1,0 +1,22 @@
+# Maven build output
+target/
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# VS Code
+.vscode/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
