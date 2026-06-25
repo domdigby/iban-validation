@@ -3,6 +3,12 @@ package com.affinis;
 import org.apache.commons.validator.routines.IBANValidator;
 import org.apache.commons.validator.routines.IBANValidatorStatus;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
 /**
  * IBAN validator with human-readable failure reasons.
  *
@@ -12,8 +18,9 @@ import org.apache.commons.validator.routines.IBANValidatorStatus;
  *
  * Usage:
  *   java -jar iban-validator-1.0.0.jar <IBAN> [IBAN2 ...]
+ *   java -jar iban-validator-1.0.0.jar --file <input.txt> [--output <output.csv>]
  *
- * Exit codes:  0 = all IBANs valid,  2 = one or more invalid
+ * Exit codes:  0 = all IBANs valid,  2 = one or more invalid,  1 = usage/IO error
  */
 public class Main {
 
@@ -21,10 +28,13 @@ public class Main {
 
     public static void main(String[] args) {
         if (args.length == 0) {
-            System.err.println("Usage: java -jar iban-validator-1.0.0.jar <IBAN> [IBAN2 ...]");
-            System.err.println("Example:");
-            System.err.println("  java -jar iban-validator-1.0.0.jar GB82WEST12345698765432 DE89370400440532013000");
+            printUsage();
             System.exit(1);
+        }
+
+        if (args[0].equals("--file")) {
+            runBatchMode(args);
+            return;
         }
 
         boolean allValid = true;
@@ -35,6 +45,112 @@ public class Main {
         }
 
         System.exit(allValid ? 0 : 2);
+    }
+
+    private static void printUsage() {
+        System.err.println("Usage: java -jar iban-validator-1.0.0.jar <IBAN> [IBAN2 ...]");
+        System.err.println("   or: java -jar iban-validator-1.0.0.jar --file <input.txt> [--output <output.csv>]");
+        System.err.println("Examples:");
+        System.err.println("  java -jar iban-validator-1.0.0.jar GB82WEST12345698765432 DE89370400440532013000");
+        System.err.println("  java -jar iban-validator-1.0.0.jar --file ibans.txt");
+    }
+
+    // ── batch mode ───────────────────────────────────────────────────────────
+
+    /**
+     * Reads one IBAN per line from {@code --file <input.txt>}, validates each,
+     * and writes a two-column CSV ("IBAN,Result") to {@code --output <output.csv>}
+     * (or "<input-basename>.csv" alongside the input file if omitted).
+     * Blank lines are skipped. Exits 0 if all valid, 2 if any invalid, 1 on usage/IO error.
+     */
+    private static void runBatchMode(String[] args) {
+        String inputArg = null;
+        String outputArg = null;
+
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--file" -> {
+                    if (i + 1 >= args.length) {
+                        printUsage();
+                        System.exit(1);
+                    }
+                    inputArg = args[++i];
+                }
+                case "--output" -> {
+                    if (i + 1 >= args.length) {
+                        printUsage();
+                        System.exit(1);
+                    }
+                    outputArg = args[++i];
+                }
+                default -> {
+                    System.err.println("Unknown argument: " + args[i]);
+                    printUsage();
+                    System.exit(1);
+                }
+            }
+        }
+
+        if (inputArg == null) {
+            printUsage();
+            System.exit(1);
+        }
+
+        Path inputPath = Path.of(inputArg);
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(inputPath, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            System.err.println("Could not read input file '" + inputArg + "': " + e.getMessage());
+            System.exit(1);
+            return;
+        }
+
+        Path outputPath = outputArg != null ? Path.of(outputArg) : resolveDefaultOutputPath(inputPath);
+
+        StringBuilder csv = new StringBuilder();
+        csv.append("IBAN,Result").append(System.lineSeparator());
+
+        int processedCount = 0;
+        int invalidCount = 0;
+        for (String line : lines) {
+            String iban = line.trim();
+            if (iban.isEmpty()) continue;
+
+            String result = validate(iban);
+            processedCount++;
+            if (!result.equals("true")) invalidCount++;
+
+            csv.append(csvEscape(iban)).append(',').append(csvEscape(result)).append(System.lineSeparator());
+        }
+
+        try {
+            Files.writeString(outputPath, csv.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            System.err.println("Could not write output file '" + outputPath + "': " + e.getMessage());
+            System.exit(1);
+            return;
+        }
+
+        System.out.printf("Processed %d IBANs, %d invalid -> wrote %s%n", processedCount, invalidCount, outputPath);
+        System.exit(invalidCount == 0 ? 0 : 2);
+    }
+
+    /** Defaults to the input file's base name with a ".csv" extension, in the same directory. */
+    private static Path resolveDefaultOutputPath(Path inputPath) {
+        String fileName = inputPath.getFileName().toString();
+        int dot = fileName.lastIndexOf('.');
+        String baseName = dot >= 0 ? fileName.substring(0, dot) : fileName;
+        Path parent = inputPath.getParent();
+        return parent != null ? parent.resolve(baseName + ".csv") : Path.of(baseName + ".csv");
+    }
+
+    /** Quotes a CSV field (doubling embedded quotes) if it contains a comma, quote, or newline. */
+    private static String csvEscape(String field) {
+        if (field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r")) {
+            return "\"" + field.replace("\"", "\"\"") + "\"";
+        }
+        return field;
     }
 
     // ── validation ───────────────────────────────────────────────────────────
