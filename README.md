@@ -48,6 +48,16 @@ DE89370400440532013099,false: Checksum validation failed (MOD-97) -- check digit
 
 The console prints a short summary instead of per-IBAN output, e.g. `Processed 4 IBANs, 2 invalid -> wrote ibans.csv`.
 
+## Running on a PC with no Java installed
+
+The fat jar above still needs *some* JRE on the machine (Java 21+, since this code requires modern `switch` syntax). To run on a PC with no Java at all, build a self-contained native app image instead:
+
+```powershell
+.\package-native.ps1
+```
+
+This bundles a private Java 21 runtime alongside the app via [`jpackage`](https://docs.oracle.com/en/java/javase/21/jpackage/), producing `target\dist\iban-validator\`. Copy that whole folder to any Windows PC and run `iban-validator.exe` from inside it — both the per-arg mode and `--file`/`--output` batch mode work identically, with the same console output and exit codes. The folder is large (~150MB, since it includes a full JRE) so it isn't checked into git (`target/dist/` is ignored).
+
 ## Exit codes
 
 | Code | Meaning |

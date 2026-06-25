@@ -1,6 +1,9 @@
 # Maven build output
 #target/
 
+# Native app-image output (bundled JRE, ~150MB) - never commit this; distribute via GitHub Releases instead
+target/dist/
+
 # Claude Code
 .claude/
 CLAUDE.md
